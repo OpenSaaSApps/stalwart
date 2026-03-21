@@ -1,0 +1,82 @@
+##############################################################################
+# Stalwart Mail Server + OAuth2 Proxy (Logto OIDC SSO) — Coolify-ready
+#
+# Required environment variables (set in Coolify or .env):
+#   OIDC_ISSUER_URL          – Logto OIDC issuer (e.g. https://auth.example.com/oidc)
+#   OIDC_CLIENT_ID           – OAuth2 client ID registered in Logto
+#   OIDC_CLIENT_SECRET       – OAuth2 client secret
+#   OAUTH2_PROXY_COOKIE_SECRET – 32-byte base64 secret for cookie encryption
+#                                Generate: python3 -c 'import os,base64;print(base64.urlsafe_b64encode(os.urandom(32)).decode())'
+#   OAUTH2_PROXY_REDIRECT_URL  – e.g. https://mail-admin.example.com/oauth2/callback
+##############################################################################
+
+services:
+  # ── Stalwart Mail Server ──────────────────────────────────────────────
+  mailserver:
+    image: stalwartlabs/mail-server:latest
+    container_name: stalwart-mailserver
+    restart: unless-stopped
+    ports:
+      - "25:25"       # SMTP
+      - "143:143"     # IMAP
+      - "993:993"     # IMAPS
+      - "587:587"     # Submission
+      - "465:465"     # SMTPS
+      - "110:110"     # POP3
+      - "995:995"     # POP3S
+      - "4190:4190"   # ManageSieve
+      - "443:443"     # HTTPS (web UI / JMAP / REST API)
+      - "8080:8080"   # HTTP  (web UI / JMAP / REST API)
+    volumes:
+      - stalwart_data:/opt/stalwart
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - mail-network
+
+  # ── OAuth2 Proxy (Logto OIDC SSO for the management web UI) ──────────
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:latest
+    container_name: stalwart-oauth2-proxy
+    restart: unless-stopped
+    depends_on:
+      mailserver:
+        condition: service_healthy
+    ports:
+      - "4180:4180"
+    environment:
+      # ── OIDC / Logto ────────────────────────────────────────────────
+      OAUTH2_PROXY_PROVIDER: oidc
+      OAUTH2_PROXY_OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:?Set OIDC_ISSUER_URL}
+      OAUTH2_PROXY_CLIENT_ID: ${OIDC_CLIENT_ID:?Set OIDC_CLIENT_ID}
+      OAUTH2_PROXY_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:?Set OIDC_CLIENT_SECRET}
+      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET:?Set OAUTH2_PROXY_COOKIE_SECRET}
+      OAUTH2_PROXY_REDIRECT_URL: ${OAUTH2_PROXY_REDIRECT_URL:-http://localhost:4180/oauth2/callback}
+
+      # ── Upstream (Stalwart web management UI) ───────────────────────
+      OAUTH2_PROXY_UPSTREAMS: http://mailserver:8080
+
+      # ── Listener ────────────────────────────────────────────────────
+      OAUTH2_PROXY_HTTP_ADDRESS: 0.0.0.0:4180
+
+      # ── Behaviour ──────────────────────────────────────────────────
+      OAUTH2_PROXY_EMAIL_DOMAINS: "*"
+      OAUTH2_PROXY_PASS_ACCESS_TOKEN: "true"
+      OAUTH2_PROXY_PASS_AUTHORIZATION_HEADER: "true"
+      OAUTH2_PROXY_SET_XAUTHREQUEST: "true"
+      OAUTH2_PROXY_COOKIE_SECURE: "true"
+      OAUTH2_PROXY_COOKIE_SAMESITE: lax
+      OAUTH2_PROXY_SKIP_PROVIDER_BUTTON: "true"
+      OAUTH2_PROXY_REVERSE_PROXY: "true"
+    networks:
+      - mail-network
+
+volumes:
+  stalwart_data:
+
+networks:
+  mail-network:
+    driver: bridge
