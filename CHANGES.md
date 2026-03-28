@@ -12,7 +12,7 @@ Updated `docker-compose.yaml` to be fully Coolify-ready with all configuration e
 | OAuth2 Proxy image | `latest` (unpinned) | `v7.7.1` (pinned) |
 | OAuth2 Proxy port conflict | Hardcoded `4180:4180` | Configurable `${OAUTH2_PROXY_PORT:-443}:4180` |
 | Mail ports | Hardcoded | All configurable via env vars |
-| Stalwart image | Hardcoded | `${STALWART_IMAGE:-stalwartlabs/mail-server:latest}` |
+| Stalwart image | Hardcoded | `${STALWART_IMAGE:-stalwartlabs/stalwart:latest}` |
 | Stalwart hostname | Not set | `${STALWART_HOSTNAME:-mail.example.com}` |
 | Admin secret | Not configurable | `${ADMIN_SECRET:-}` (empty = auto-generate) |
 | Timezone | Not set | `${TZ:-UTC}` |
@@ -41,7 +41,7 @@ Updated `docker-compose.yaml` to be fully Coolify-ready with all configuration e
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `STALWART_IMAGE` | `stalwartlabs/mail-server:latest` | Stalwart Docker image and tag |
+| `STALWART_IMAGE` | `stalwartlabs/stalwart:latest` | Stalwart Docker image and tag |
 | `STALWART_HOSTNAME` | `mail.example.com` | Mail server FQDN (used for TLS, HELO, etc.) |
 | `ADMIN_SECRET` | *(auto-generated)* | Fallback admin password. Leave empty to auto-generate on first run (check `docker logs stalwart-mailserver`) |
 | `TZ` | `UTC` | Container timezone |

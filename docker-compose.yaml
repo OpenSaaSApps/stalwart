@@ -9,7 +9,7 @@
 #     Generate: python3 -c 'import os,base64;print(base64.urlsafe_b64encode(os.urandom(32)).decode())'
 #
 # ── Optional — sensible defaults provided ────────────────────────────────
-#   STALWART_IMAGE               – Docker image           (default: stalwartlabs/mail-server:latest)
+#   STALWART_IMAGE               – Docker image           (default: stalwartlabs/stalwart:latest)
 #   STALWART_HOSTNAME            – Mail server hostname    (default: mail.example.com)
 #   ADMIN_SECRET                 – Admin password          (default: auto-generated on first run, check docker logs)
 #   TZ                           – Timezone                (default: UTC)
@@ -35,7 +35,7 @@
 services:
   # ── Stalwart Mail Server ──────────────────────────────────────────────
   mailserver:
-    image: ${STALWART_IMAGE:-stalwartlabs/mail-server:latest}
+    image: ${STALWART_IMAGE:-stalwartlabs/stalwart:latest}
     container_name: stalwart-mailserver
     restart: unless-stopped
     security_opt:
