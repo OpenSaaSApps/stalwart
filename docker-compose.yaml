@@ -24,7 +24,6 @@
 services:
   mailserver:
     image: ${STALWART_IMAGE:-stalwartlabs/stalwart:latest}
-    container_name: stalwart-mailserver
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -44,12 +43,13 @@ services:
       - TZ=${TZ:-UTC}
     volumes:
       - stalwart_data:/opt/stalwart
-    healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 25 || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
+    # healthcheck disabled — re-enable once container is confirmed stable
+    # healthcheck:
+    #   test: ["CMD-SHELL", "nc -z localhost 25 || exit 1"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 5
+    #   start_period: 30s
     logging:
       driver: "json-file"
       options:
