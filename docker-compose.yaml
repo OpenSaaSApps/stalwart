@@ -1,39 +1,27 @@
 ##############################################################################
-# Stalwart Mail Server + OAuth2 Proxy (Logto OIDC SSO) — Coolify-ready
+# Stalwart Mail Server — Coolify-ready (standalone, built-in admin auth)
 #
-# ══════════════════════════════════════════════════════════════════════════
-# REQUIRED — deployment will fail without these
-# ══════════════════════════════════════════════════════════════════════════
-#   OIDC_CLIENT_SECRET           – OAuth2 client secret from Logto
-#   OAUTH2_PROXY_COOKIE_SECRET   – 32-byte base64 secret for cookie encryption
-#     Generate: python3 -c 'import os,base64;print(base64.urlsafe_b64encode(os.urandom(32)).decode())'
+# No required environment variables — deploys with sensible defaults.
+# Admin credentials are auto-generated on first run (check docker logs).
 #
 # ── Optional — sensible defaults provided ────────────────────────────────
-#   STALWART_IMAGE               – Docker image           (default: stalwartlabs/stalwart:latest)
-#   STALWART_HOSTNAME            – Mail server hostname    (default: mail.example.com)
-#   ADMIN_SECRET                 – Admin password          (default: auto-generated on first run, check docker logs)
-#   TZ                           – Timezone                (default: UTC)
+#   STALWART_IMAGE       – Docker image           (default: stalwartlabs/stalwart:latest)
+#   STALWART_HOSTNAME    – Mail server hostname    (default: mail.example.com)
+#   ADMIN_SECRET         – Admin password          (default: auto-generated, check docker logs)
+#   TZ                   – Timezone                (default: UTC)
 #
-#   OIDC_ISSUER_URL              – OIDC issuer URL         (default: https://logto.example.com/oidc)
-#   OIDC_CLIENT_ID               – OIDC client ID          (default: stalwart)
-#   OAUTH2_PROXY_REDIRECT_URL    – OAuth2 callback URL     (default: https://mail-admin.example.com/oauth2/callback)
-#   OAUTH2_PROXY_PORT            – External proxy port     (default: 443)
-#   OAUTH2_PROXY_EMAIL_DOMAINS   – Allowed email domains   (default: * — all domains)
-#   OAUTH2_PROXY_SCOPE           – OIDC scopes             (default: openid profile email)
-#   OAUTH2_PROXY_CODE_CHALLENGE_METHOD – PKCE method       (default: S256)
-#
-#   SMTP_PORT                    – SMTP port               (default: 25)
-#   SUBMISSION_PORT              – Submission port          (default: 587)
-#   SMTPS_PORT                   – SMTPS port              (default: 465)
-#   IMAP_PORT                    – IMAP port               (default: 143)
-#   IMAPS_PORT                   – IMAPS port              (default: 993)
-#   POP3_PORT                    – POP3 port               (default: 110)
-#   POP3S_PORT                   – POP3S port              (default: 995)
-#   MANAGESIEVE_PORT             – ManageSieve port        (default: 4190)
+#   HTTPS_PORT           – HTTPS / Web admin port  (default: 4500)
+#   SMTP_PORT            – SMTP port               (default: 25)
+#   SUBMISSION_PORT      – Submission port          (default: 5870)
+#   SMTPS_PORT           – SMTPS port              (default: 465)
+#   IMAP_PORT            – IMAP port               (default: 143)
+#   IMAPS_PORT           – IMAPS port              (default: 993)
+#   POP3_PORT            – POP3 port               (default: 110)
+#   POP3S_PORT           – POP3S port              (default: 995)
+#   MANAGESIEVE_PORT     – ManageSieve port        (default: 4190)
 ##############################################################################
 
 services:
-  # ── Stalwart Mail Server ──────────────────────────────────────────────
   mailserver:
     image: ${STALWART_IMAGE:-stalwartlabs/stalwart:latest}
     container_name: stalwart-mailserver
@@ -41,18 +29,15 @@ services:
     security_opt:
       - no-new-privileges:true
     ports:
-      # Mail protocol ports — exposed directly (Traefik cannot proxy these)
-      - "${SMTP_PORT:-25}:25"             # SMTP
-      - "${SUBMISSION_PORT:-587}:587"     # Submission (STARTTLS)
-      - "${SMTPS_PORT:-465}:465"          # SMTPS (implicit TLS)
-      - "${IMAP_PORT:-143}:143"           # IMAP
-      - "${IMAPS_PORT:-993}:993"          # IMAPS (implicit TLS)
-      - "${POP3_PORT:-110}:110"           # POP3
-      - "${POP3S_PORT:-995}:995"          # POP3S (implicit TLS)
-      - "${MANAGESIEVE_PORT:-4190}:4190"  # ManageSieve
-    expose:
-      # Web UI / JMAP / REST API — internal only, accessed via OAuth2 Proxy
-      - "443"
+      - "${HTTPS_PORT:-4500}:443"             # Web admin / JMAP / REST API (HTTPS)
+      - "${SMTP_PORT:-25}:25"                 # SMTP
+      - "${SUBMISSION_PORT:-5870}:587"        # Submission (STARTTLS)
+      - "${SMTPS_PORT:-465}:465"              # SMTPS (implicit TLS)
+      - "${IMAP_PORT:-143}:143"               # IMAP
+      - "${IMAPS_PORT:-993}:993"              # IMAPS (implicit TLS)
+      - "${POP3_PORT:-110}:110"               # POP3
+      - "${POP3S_PORT:-995}:995"              # POP3S (implicit TLS)
+      - "${MANAGESIEVE_PORT:-4190}:4190"      # ManageSieve
     environment:
       - STALWART_HOSTNAME=${STALWART_HOSTNAME:-mail.example.com}
       - ADMIN_SECRET=${ADMIN_SECRET:-}
@@ -60,7 +45,7 @@ services:
     volumes:
       - stalwart_data:/opt/stalwart
     healthcheck:
-      test: ["CMD-SHELL", "cat < /dev/tcp/localhost/25 || exit 1"]
+      test: ["CMD-SHELL", "nc -z localhost 25 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -70,61 +55,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-        compress: "true"
-    networks:
-      - mail-network
-
-  # ── OAuth2 Proxy (Logto OIDC SSO for the management web UI) ──────────
-  oauth2-proxy:
-    image: quay.io/oauth2-proxy/oauth2-proxy:v7.7.1
-    container_name: stalwart-oauth2-proxy
-    restart: unless-stopped
-    security_opt:
-      - no-new-privileges:true
-    depends_on:
-      mailserver:
-        condition: service_healthy
-    ports:
-      - "${OAUTH2_PROXY_PORT:-443}:4180"
-    environment:
-      # ── OIDC / Logto ────────────────────────────────────────────────
-      OAUTH2_PROXY_PROVIDER: oidc
-      OAUTH2_PROXY_OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-https://logto.example.com/oidc}
-      OAUTH2_PROXY_CLIENT_ID: ${OIDC_CLIENT_ID:-stalwart}
-      OAUTH2_PROXY_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:?Set OIDC_CLIENT_SECRET}
-      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET:?Set OAUTH2_PROXY_COOKIE_SECRET}
-      OAUTH2_PROXY_REDIRECT_URL: ${OAUTH2_PROXY_REDIRECT_URL:-https://mail-admin.example.com/oauth2/callback}
-      OAUTH2_PROXY_SCOPE: ${OAUTH2_PROXY_SCOPE:-openid profile email}
-      OAUTH2_PROXY_CODE_CHALLENGE_METHOD: ${OAUTH2_PROXY_CODE_CHALLENGE_METHOD:-S256}
-
-      # ── Upstream (Stalwart web management UI) ───────────────────────
-      OAUTH2_PROXY_UPSTREAMS: https://mailserver:443
-      OAUTH2_PROXY_SSL_UPSTREAM_INSECURE_SKIP_VERIFY: "true"
-
-      # ── Listener ────────────────────────────────────────────────────
-      OAUTH2_PROXY_HTTP_ADDRESS: 0.0.0.0:4180
-
-      # ── Behaviour ──────────────────────────────────────────────────
-      OAUTH2_PROXY_EMAIL_DOMAINS: ${OAUTH2_PROXY_EMAIL_DOMAINS:-*}
-      OAUTH2_PROXY_PASS_ACCESS_TOKEN: "true"
-      OAUTH2_PROXY_PASS_AUTHORIZATION_HEADER: "true"
-      OAUTH2_PROXY_SET_XAUTHREQUEST: "true"
-      OAUTH2_PROXY_COOKIE_SECURE: "true"
-      OAUTH2_PROXY_COOKIE_HTTPONLY: "true"
-      OAUTH2_PROXY_COOKIE_SAMESITE: lax
-      OAUTH2_PROXY_SKIP_PROVIDER_BUTTON: "true"
-      OAUTH2_PROXY_REVERSE_PROXY: "true"
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:4180/ping || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 10s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "5m"
-        max-file: "2"
         compress: "true"
     networks:
       - mail-network
