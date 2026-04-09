@@ -1,0 +1,14 @@
+services:
+  app:
+    image: stalwartlabs/stalwart:latest
+    container_name: stalwart
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      - TZ=${{TZ}}
+    volumes:
+      - app_data:/data
+
+volumes:
+  app_data:
